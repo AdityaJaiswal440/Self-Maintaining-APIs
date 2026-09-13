@@ -8,7 +8,10 @@ waiting for one big response.
 """
 
 import json
+import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from pathlib import Path
 from dotenv import load_dotenv
@@ -89,4 +92,4 @@ def get_demo_repo():
 
 
 # Serve the frontend
-app.mount("/", StaticFiles(directory=str(Path(__file__).parent.parent / "frontend"), html=True), name="frontend")
+#app.mount("/", StaticFiles(directory=str(Path(__file__).parent.parent / "frontend"), html=True), name="frontend")
