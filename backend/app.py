@@ -27,7 +27,18 @@ from modules.scan_codebase import scan_codebase
 from modules.generate_fix import generate_fixes
 from modules.open_pr import open_pr
 
+
 app = FastAPI(title="API Change Agent")
+
+from fastapi.middleware.cors import CORSMiddleware
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["https://self-maintaining-ap-is.vercel.app"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 app.add_middleware(
     CORSMiddleware,

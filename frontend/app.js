@@ -138,7 +138,7 @@ function runPipeline() {
 
   const repo = document.getElementById("repo-input").value.trim();
   const url = repo ? `${BACKEND}/run?repo=${encodeURIComponent(repo)}` : `${BACKEND}/run`;
-  const source = new EventSource(url);
+  const source = new EventSource("[https://self-maintaining-apis.onrender.com/run](https://self-maintaining-apis.onrender.com/run)");
 
   source.addEventListener("stage1_complete", e => {
     const data = JSON.parse(e.data);
