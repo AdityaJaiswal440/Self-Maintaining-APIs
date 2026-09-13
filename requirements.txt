@@ -1,0 +1,8 @@
+fastapi
+uvicorn
+requests
+python-dotenv
+
+# Optional - only needed if you set ANTHROPIC_API_KEY instead of the free
+# Groq/Gemini options above (both of which just use `requests`).
+anthropic
