@@ -1,0 +1,267 @@
+# API Change Agent
+
+**A prototype that watches a vendor's API changelog, finds every affected call site
+in a real codebase, and opens the fix as a pull request — before anything breaks.**
+
+> Built as a response to Harsha Gaddipati's YC RFS ["Self-Maintaining APIs"](https://www.ycombinator.com/rfs#self-maintaining-apis).
+> Demoed end-to-end against Stripe's real Charges → PaymentIntents migration.
+
+![status](https://img.shields.io/badge/status-prototype-orange)
+![python](https://img.shields.io/badge/python-3.12-blue)
+![stack](https://img.shields.io/badge/stack-FastAPI%20%2B%20Claude-6E5DE7)
+
+---
+
+## Demo
+
+<!--
+  Record a ~20s screen capture of clicking "Run pipeline" and watching the
+  four stages light up, then drop it here as demo.gif. On macOS: Cmd+Shift+5
+  to record, then convert with `ffmpeg -i demo.mov -vf "fps=12,scale=900:-1" demo.gif`.
+  This is the single highest-leverage thing to add before sharing the repo —
+  a person scrolling GitHub decides whether to keep reading in the first 3 seconds.
+-->
+![demo](./demo.gif)
+
+## The problem
+
+> Over the past year, I've worked with over 50 API vendors, mostly early-stage
+> startups. One pattern is consistent: API communication is broken. Breaking
+> changes ship with little warning. Useful features quietly launch and go
+> unnoticed. Changelogs don't get read.
+
+Two very different failure modes hide inside that one sentence:
+
+| Failure mode | What it looks like | What it needs |
+|---|---|---|
+| **Silent breaking change** | A vendor removes a parameter or deprecates an endpoint; your integration starts failing in production | Diffing the API surface + finding affected call sites + a correct, minimal fix |
+| **Undiscovered improvement** | A vendor ships something that would simplify your integration, but nobody reads the changelog | Watching usage patterns + recommending the better pattern |
+
+This prototype tackles the first one — the one with the actual production
+downtime attached to it — end to end, against a single real vendor (Stripe),
+so the mechanism can be judged on whether it actually works, not just
+described.
+
+## Why now
+
+Agentic coding tools (Claude Code, Devin, Greptile, etc.) already prove that
+developers are willing to hand codebase write-access to an external tool,
+provided it's valuable. That trust didn't exist two years ago. The
+infrastructure for automated code changes exists — what's missing is the
+**application layer** connecting a vendor's changelog to a customer's actual
+codebase. This prototype is that layer, scoped to one vendor and one
+integration pattern.
+
+## How it works
+
+```
+ Vendor changelog                Customer codebase
+ (raw text)                      (checkout.py)
+      │                                │
+      ▼                                │
+┌─────────────┐                        │
+│  1. DETECT  │  LLM extracts a        │
+│             │  structured change     │
+│             │  record from raw text  │
+└──────┬──────┘                        │
+       │ structured change records     │
+       ▼                                ▼
+┌─────────────┐               ┌─────────────┐
+│  2. SCAN    │──────────────▶│  AST scan   │
+│             │   match       │  for stripe.*│
+│             │◀──────────────│  call sites  │
+└──────┬──────┘               └─────────────┘
+       │ affected call sites
+       ▼
+┌─────────────┐
+│  3. FIX     │  LLM generates a minimal,
+│             │  targeted diff — never a
+│             │  full-file rewrite
+└──────┬──────┘
+       │ diffs
+       ▼
+┌─────────────┐
+│  4. SHIP    │  Opens a real GitHub PR
+│             │  (or a realistic mock,
+│             │  if no token is set)
+└─────────────┘
+```
+
+Each stage is independently testable — run any `modules/*.py` file directly
+to see its output in isolation. The FastAPI backend chains them together and
+streams a Server-Sent Event after each stage completes, which is what
+drives the animated pipeline in the web UI.
+
+## The demo case
+
+Real, well-documented Stripe changes, not invented ones:
+
+1. **`stripe.Charge.create` → `stripe.PaymentIntent.create`** (2019 deprecation,
+   needed for SCA/3D Secure 2 support in European markets)
+2. **`source=` → `payment_method=` on `PaymentIntent.confirm`** (2022 breaking
+   change — old calls get a 400 error)
+3. **`automatic_payment_methods` addition** (2023 non-breaking feature — used
+   to prove the system correctly identifies "no action needed" changes, not
+   just breaking ones)
+
+The sample codebase (`backend/demo_repo/checkout.py`) intentionally uses the
+old patterns for the first two, plus one unrelated `stripe.Refund.create`
+call that should **never** be flagged — that's the false-positive control.
+
+## Quickstart
+
+```bash
+git clone <this-repo>
+cd api-change-agent
+pip install -r backend/requirements.txt
+cd backend
+uvicorn app:app --reload
+```
+
+Open `http://localhost:8000` and click **Run pipeline**.
+
+That's it — **no API keys required.** By default the app runs in mock mode:
+Modules 1 and 3 use frozen LLM outputs (generated by actually running the
+real prompts once — see [Module 1 prompt](#module-1-prompt-in-full) below),
+and Module 4 returns a realistic mock PR object instead of writing to GitHub.
+This means anyone cloning the repo sees the full working pipeline
+immediately.
+
+### Running with real LLM calls and real PRs (still free)
+
+Copy `.env.example` to `.env` and fill in what you want to enable:
+
+```bash
+cp .env.example .env
+```
+
+- Set `GROQ_API_KEY` **or** `GEMINI_API_KEY` to make Modules 1 and 3 call a
+  real LLM instead of using frozen outputs. Both have genuinely free tiers
+  with no credit card required:
+  - Groq: [console.groq.com](https://console.groq.com) — uses
+    `llama-3.3-70b-versatile`
+  - Gemini: [aistudio.google.com/apikey](https://aistudio.google.com/apikey) — uses
+    `gemini-2.0-flash`
+  - (`ANTHROPIC_API_KEY` also works if you have one, but Claude's API is
+    paid — it's the lowest priority provider for that reason.)
+- Set `GITHUB_TOKEN` in `.env` to enable real PRs. **The target repo is no
+  longer set in `.env`** — instead, type `owner/repo` into the input field
+  next to the "Run pipeline" button in the UI before clicking it. This
+  means anyone using the tool can point it at their own repo without
+  editing any files. Leave the field blank to get a mock PR object instead.
+  The token stays server-side in `.env` and is never sent to the browser.
+- The first time you point it at a brand-new/empty repo, the pipeline
+  automatically bootstraps `demo_repo/checkout.py` into it before opening
+  the PR — you don't need to pre-populate the repo yourself.
+- Reruns are safe: each run creates a uniquely-named branch, so running
+  the demo multiple times against the same repo never collides.
+
+All of these are opt-in and independent — you can run with real LLM calls
+and mock PRs, or vice versa, and mixing Groq/Gemini with GitHub PRs costs
+nothing end to end.
+
+## Project structure
+
+```
+api-change-agent/
+├── backend/
+│   ├── app.py                          # FastAPI app + SSE orchestration
+│   ├── modules/
+│   │   ├── llm_client.py               # Shared provider switch: Groq / Gemini / Anthropic / mock
+│   │   ├── detect_changes.py           # Stage 1
+│   │   ├── scan_codebase.py            # Stage 2
+│   │   ├── generate_fix.py             # Stage 3
+│   │   └── open_pr.py                  # Stage 4
+│   ├── prompts/
+│   │   └── module1_change_detection.txt
+│   ├── data/
+│   │   └── stripe_changelog_raw.json   # Sample vendor changelog input
+│   ├── demo_repo/
+│   │   └── checkout.py                 # The "customer codebase" being scanned
+│   └── requirements.txt
+├── frontend/
+│   ├── index.html                      # Pipeline visualization UI
+│   └── app.js                          # SSE client + animation logic
+├── .env.example
+└── README.md
+```
+
+## Module 1 prompt (in full)
+
+This is the actual extraction prompt used to turn raw changelog text into
+the structured record every downstream module relies on. It's included here
+in full rather than just described, since the quality of everything after
+it depends on getting this extraction right.
+
+```
+You are an API-change extraction engine. You will be given the raw text of a single
+vendor changelog entry (from Stripe). Convert it into a single structured JSON object
+describing the change, so that a downstream system can match it against customer code
+and generate a fix.
+
+Return ONLY valid JSON, no prose, no markdown fences. Use exactly this schema:
+
+{
+  "change_id": "<short slug derived from the title>",
+  "date": "<date from input, unchanged>",
+  "type": "breaking" | "deprecation" | "feature",
+  "sdk_method": "<the SDK method/class this affects, e.g. stripe.Charge.create>",
+  "endpoint": "<REST endpoint this affects>",
+  "old_pattern": "<short description of the code pattern that is now affected, in terms a static analyzer could search for>",
+  "new_pattern": "<short description of the replacement pattern>",
+  "migration_note": "<1-2 sentence plain-English instruction a developer would follow to migrate a call site>",
+  "severity": "high" | "medium" | "low",
+  "requires_action": true | false
+}
+
+Rules:
+- "type" is "breaking" only if existing integrations will error or silently misbehave.
+  It is "deprecation" if old code still works today but is discouraged / will break later.
+  It is "feature" if this is purely additive and non-breaking.
+- "requires_action" is false only for pure "feature" entries with no risk to existing code.
+- "severity" should reflect real-world blast radius: "high" if it can cause failed
+  payments or errors in production, "medium" if it causes silent degraded behavior
+  (e.g. missing SCA support), "low" for cosmetic/non-critical items.
+- Do not invent details not present in or reasonably inferable from the raw text.
+
+Raw changelog entry:
+---
+{RAW_ENTRY}
+---
+
+Return the JSON object now.
+```
+
+The full prompt file lives at `backend/prompts/module1_change_detection.txt`
+so it can be tuned without touching any code.
+
+## What's deliberately out of scope for this prototype
+
+Being upfront about this is part of the point — a prototype should prove the
+mechanism, not pretend to be the whole product:
+
+- **One vendor.** Stripe's changelog format doesn't generalize automatically
+  to every API vendor's docs. A production version needs a per-vendor
+  changelog adapter, or a more general document-ingestion layer.
+- **No confidence scoring / human-in-the-loop gate.** Every affected call
+  site currently gets a PR. A real product needs a threshold below which a
+  suggestion is surfaced for review instead of auto-PR'd.
+- **Static AST matching, not semantic call-graph analysis.** This is fine for
+  a single file; a real codebase needs cross-file call resolution, wrapper
+  functions, and framework-specific patterns (e.g. a Django middleware
+  wrapping the Stripe call).
+- **The "undiscovered feature" failure mode isn't addressed.** This
+  prototype only tackles breaking changes and deprecations, which is the
+  higher-severity half of the original problem statement.
+
+## Roadmap (if this moves past prototype)
+
+- Neutral third-party model: one integration point, many vendors, instead of
+  "install Stripe's own agent" — the more scalable distribution shape
+- A confidence/severity threshold that gates auto-PR vs. suggest-only
+- Cross-file impact analysis instead of per-file AST scanning
+- A vendor-agnostic changelog ingestion layer (RSS/API-diff/docs-scrape)
+
+## License
+
+MIT — this is a prototype built for a specific evaluation, use freely.

@@ -1,0 +1,36 @@
+You are an API-change extraction engine. You will be given the raw text of a single
+vendor changelog entry (from Stripe). Convert it into a single structured JSON object
+describing the change, so that a downstream system can match it against customer code
+and generate a fix.
+
+Return ONLY valid JSON, no prose, no markdown fences. Use exactly this schema:
+
+{
+  "change_id": "<short slug derived from the title>",
+  "date": "<date from input, unchanged>",
+  "type": "breaking" | "deprecation" | "feature",
+  "sdk_method": "<the SDK method/class this affects, e.g. stripe.Charge.create>",
+  "endpoint": "<REST endpoint this affects>",
+  "old_pattern": "<short description of the code pattern that is now affected, in terms a static analyzer could search for>",
+  "new_pattern": "<short description of the replacement pattern>",
+  "migration_note": "<1-2 sentence plain-English instruction a developer would follow to migrate a call site>",
+  "severity": "high" | "medium" | "low",
+  "requires_action": true | false
+}
+
+Rules:
+- "type" is "breaking" only if existing integrations will error or silently misbehave.
+  It is "deprecation" if old code still works today but is discouraged / will break later.
+  It is "feature" if this is purely additive and non-breaking.
+- "requires_action" is false only for pure "feature" entries with no risk to existing code.
+- "severity" should reflect real-world blast radius: "high" if it can cause failed
+  payments or errors in production, "medium" if it causes silent degraded behavior
+  (e.g. missing SCA support), "low" for cosmetic/non-critical items.
+- Do not invent details not present in or reasonably inferable from the raw text.
+
+Raw changelog entry:
+---
+{RAW_ENTRY}
+---
+
+Return the JSON object now.

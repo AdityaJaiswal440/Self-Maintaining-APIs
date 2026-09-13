@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>API Change Agent — live demo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #10141c;
+    --panel: #161b26;
+    --panel-raised: #1b2130;
+    --border: #262d3d;
+    --text: #e4e7ee;
+    --text-dim: #8890a6;
+    --accent-amber: #f5a623;
+    --accent-green: #4cd787;
+    --accent-red: #ff6b6b;
+    --accent-blue: #6ea8fe;
+    --font-head: 'Space Grotesk', sans-serif;
+    --font-body: 'Inter', sans-serif;
+    --font-mono: 'JetBrains Mono', monospace;
+  }
+
+  * { box-sizing: border-box; }
+  html { -webkit-font-smoothing: antialiased; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-body);
+    line-height: 1.5;
+  }
+
+  .wrap {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 48px 24px 96px;
+  }
+
+  header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    gap: 24px;
+    margin-bottom: 48px;
+    flex-wrap: wrap;
+  }
+
+  .kicker {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    color: var(--accent-blue);
+    margin: 0 0 10px;
+  }
+
+  h1 {
+    font-family: var(--font-head);
+    font-size: 34px;
+    font-weight: 600;
+    margin: 0 0 10px;
+    letter-spacing: -0.01em;
+  }
+
+  .sub {
+    color: var(--text-dim);
+    font-size: 15px;
+    max-width: 56ch;
+    margin: 0;
+  }
+
+  button#run-btn {
+    font-family: var(--font-mono);
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--bg);
+    background: var(--accent-amber);
+    border: none;
+    border-radius: 6px;
+    padding: 13px 22px;
+    cursor: pointer;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+    white-space: nowrap;
+  }
+  button#run-btn:hover { transform: translateY(-1px); box-shadow: 0 4px 16px rgba(245,166,35,0.25); }
+  button#run-btn:disabled { background: var(--border); color: var(--text-dim); cursor: not-allowed; transform: none; box-shadow: none; }
+
+  /* Pipeline rail */
+  .rail {
+    display: flex;
+    align-items: center;
+    margin-bottom: 40px;
+    overflow-x: auto;
+    padding-bottom: 4px;
+  }
+
+  .node {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    min-width: 130px;
+    opacity: 0.4;
+    transition: opacity 0.4s ease;
+  }
+  .node.active, .node.done { opacity: 1; }
+
+  .node-badge {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    border: 2px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--font-mono);
+    font-size: 14px;
+    color: var(--text-dim);
+    background: var(--panel);
+    transition: all 0.4s ease;
+  }
+  .node.active .node-badge {
+    border-color: var(--accent-amber);
+    color: var(--accent-amber);
+    animation: pulse 1.1s ease-in-out infinite;
+  }
+  .node.done .node-badge {
+    border-color: var(--accent-green);
+    color: var(--accent-green);
+    background: rgba(76,215,135,0.08);
+  }
+
+  @keyframes pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(245,166,35,0.35); }
+    50% { box-shadow: 0 0 0 6px rgba(245,166,35,0); }
+  }
+
+  .node-label {
+    font-size: 13px;
+    font-weight: 500;
+    text-align: center;
+    color: var(--text);
+  }
+  .node-sub {
+    font-size: 11px;
+    color: var(--text-dim);
+    font-family: var(--font-mono);
+    text-align: center;
+  }
+
+  .connector {
+    flex: 1;
+    height: 2px;
+    background: var(--border);
+    min-width: 32px;
+    margin: 0 6px 30px;
+    position: relative;
+    overflow: hidden;
+  }
+  .connector.flowing::after {
+    content: '';
+    position: absolute;
+    top: 0; left: -40%;
+    width: 40%; height: 100%;
+    background: var(--accent-amber);
+    animation: flow 1s linear infinite;
+  }
+  .connector.done { background: var(--accent-green); }
+  @keyframes flow {
+    from { left: -40%; }
+    to { left: 100%; }
+  }
+
+  /* Panels */
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    margin-bottom: 20px;
+    overflow: hidden;
+  }
+  .panel-head {
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--border);
+    font-family: var(--font-mono);
+    font-size: 13px;
+    color: var(--text-dim);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .panel-body { padding: 18px; }
+
+  .empty-state {
+    color: var(--text-dim);
+    font-size: 14px;
+    padding: 8px 0;
+  }
+
+  /* Log */
+  #log {
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    color: var(--text-dim);
+    max-height: 220px;
+    overflow-y: auto;
+  }
+  #log .line { padding: 3px 0; }
+  #log .line.ok { color: var(--accent-green); }
+  #log .line.warn { color: var(--accent-amber); }
+
+  /* Change cards */
+  .change-card {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 14px 16px;
+    margin-bottom: 10px;
+    background: var(--panel-raised);
+  }
+  .change-card:last-child { margin-bottom: 0; }
+  .change-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+    gap: 10px;
+  }
+  .change-title { font-weight: 500; font-size: 14px; }
+  .tag {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    white-space: nowrap;
+  }
+  .tag.breaking { background: rgba(255,107,107,0.12); color: var(--accent-red); }
+  .tag.deprecation { background: rgba(245,166,35,0.12); color: var(--accent-amber); }
+  .tag.feature { background: rgba(110,168,254,0.12); color: var(--accent-blue); }
+  .change-note { font-size: 13px; color: var(--text-dim); }
+  .change-method { font-family: var(--font-mono); font-size: 12px; color: var(--text-dim); margin-top: 6px; }
+
+  /* Diff */
+  .diff-card {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    margin-bottom: 14px;
+    overflow: hidden;
+  }
+  .diff-card:last-child { margin-bottom: 0; }
+  .diff-head {
+    padding: 10px 14px;
+    background: var(--panel-raised);
+    font-size: 13px;
+    border-bottom: 1px solid var(--border);
+  }
+  .diff-head .loc { color: var(--text-dim); font-family: var(--font-mono); font-size: 12px; }
+  pre.diff {
+    margin: 0;
+    padding: 0;
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    overflow-x: auto;
+  }
+  pre.diff .removed { display: block; background: rgba(255,107,107,0.10); color: #ffb3b3; padding: 1px 14px; }
+  pre.diff .added { display: block; background: rgba(76,215,135,0.10); color: #a8f0c6; padding: 1px 14px; }
+
+  /* PR cards */
+  .pr-card {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 14px 16px;
+    margin-bottom: 10px;
+    background: var(--panel-raised);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 14px;
+  }
+  .pr-card:last-child { margin-bottom: 0; }
+  .pr-title { font-size: 13px; font-weight: 500; margin-bottom: 4px; }
+  .pr-meta { font-family: var(--font-mono); font-size: 11.5px; color: var(--text-dim); }
+  .pr-link {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--accent-blue);
+    text-decoration: none;
+    white-space: nowrap;
+    border: 1px solid var(--border);
+    padding: 6px 12px;
+    border-radius: 5px;
+  }
+  .pr-link:hover { border-color: var(--accent-blue); }
+
+  .summary-bar {
+    display: flex;
+    gap: 24px;
+    flex-wrap: wrap;
+    margin-top: 8px;
+  }
+  .summary-item { text-align: left; }
+  .summary-num { font-family: var(--font-head); font-size: 26px; font-weight: 600; }
+  .summary-label { font-size: 12px; color: var(--text-dim); }
+
+  code.inline { font-family: var(--font-mono); background: var(--panel-raised); padding: 1px 5px; border-radius: 3px; font-size: 12.5px; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .node.active .node-badge, .connector.flowing::after { animation: none; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div>
+      <p class="kicker">stripe · demo integration</p>
+      <h1>API Change Agent</h1>
+      <p class="sub">Watches a vendor's API changelog, finds every affected call site in a real codebase, and opens the fix as a pull request — before anything breaks in production.</p>
+    </div>
+    <div style="display:flex; flex-direction:column; align-items:flex-end; gap:8px;">
+      <input id="repo-input" type="text" placeholder="your-username/your-repo (optional)"
+        style="font-family: var(--font-mono); font-size: 13px; background: var(--panel); border: 1px solid var(--border); color: var(--text); border-radius: 6px; padding: 10px 12px; width: 260px;">
+      <button id="run-btn" onclick="runPipeline()">Run pipeline</button>
+    </div>
+  </header>
+
+  <div class="rail" id="rail">
+    <div class="node" data-stage="1">
+      <div class="node-badge">1</div>
+      <div class="node-label">Detect</div>
+      <div class="node-sub">changelog → structured</div>
+    </div>
+    <div class="connector" data-conn="1"></div>
+    <div class="node" data-stage="2">
+      <div class="node-badge">2</div>
+      <div class="node-label">Scan</div>
+      <div class="node-sub">find call sites</div>
+    </div>
+    <div class="connector" data-conn="2"></div>
+    <div class="node" data-stage="3">
+      <div class="node-badge">3</div>
+      <div class="node-label">Fix</div>
+      <div class="node-sub">generate diff</div>
+    </div>
+    <div class="connector" data-conn="3"></div>
+    <div class="node" data-stage="4">
+      <div class="node-badge">4</div>
+      <div class="node-label">Ship</div>
+      <div class="node-sub">open PR</div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head"><span>Pipeline log</span><span id="mode-tag">mode: —</span></div>
+    <div class="panel-body">
+      <div id="log"><div class="line">Waiting to run. Click "Run pipeline" to start.</div></div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head">Stage 1 — changes detected from the Stripe changelog</div>
+    <div class="panel-body" id="stage1-body"><div class="empty-state">Not run yet.</div></div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head">Stage 3 — generated fixes</div>
+    <div class="panel-body" id="stage3-body"><div class="empty-state">Not run yet.</div></div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head">Stage 4 — pull requests opened</div>
+    <div class="panel-body" id="stage4-body"><div class="empty-state">Not run yet.</div></div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head">Summary</div>
+    <div class="panel-body" id="summary-body"><div class="empty-state">Run the pipeline to see results.</div></div>
+  </div>
+
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

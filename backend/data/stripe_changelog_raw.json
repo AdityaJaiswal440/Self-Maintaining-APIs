@@ -1,0 +1,23 @@
+[
+  {
+    "date": "2019-02-19",
+    "title": "Charges API deprecated in favor of PaymentIntents",
+    "raw_text": "Direct use of the Charges API (stripe.Charge.create) for card payments is deprecated. New integrations must use the PaymentIntents API (stripe.PaymentIntent.create) to support SCA (Strong Customer Authentication) and additional payment methods. Existing Charge-based integrations will continue to work but will not support 3D Secure 2 flows required in European markets.",
+    "endpoint": "POST /v1/charges",
+    "sdk_method": "stripe.Charge.create"
+  },
+  {
+    "date": "2022-08-01",
+    "title": "sources parameter removed from PaymentIntent confirmation",
+    "raw_text": "The 'source' parameter on PaymentIntent.confirm is no longer accepted. Use 'payment_method' instead. Calls passing 'source' will receive a 400 error after the API version cutoff.",
+    "endpoint": "POST /v1/payment_intents/:id/confirm",
+    "sdk_method": "stripe.PaymentIntent.confirm"
+  },
+  {
+    "date": "2023-10-16",
+    "title": "New feature: automatic_payment_methods on PaymentIntent",
+    "raw_text": "PaymentIntent.create now accepts an 'automatic_payment_methods' object, letting Stripe automatically manage which payment methods to display instead of manually listing 'payment_method_types'. This is additive and non-breaking, but recommended for new integrations.",
+    "endpoint": "POST /v1/payment_intents",
+    "sdk_method": "stripe.PaymentIntent.create"
+  }
+]
